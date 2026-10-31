@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arimaa</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; background:#1e1e24; color:#eee; display:flex; flex-direction:column; align-items:center; margin:0; padding:16px; }
+  h1 { margin:8px 0; }
+  #tablero { display:grid; grid-template-columns:repeat(8, min(11vw, 70px)); grid-auto-rows:min(11vw, 70px); border:6px solid #000; }
+  .c { display:flex; align-items:center; justify-content:center; cursor:pointer; box-sizing:border-box; }
+  .clara { background:#ececec; } .oscura { background:#cccccc; }
+  .trampa { background:#ffb3b3; }
+  .sel1 { background:#000080 !important; } .sel2 { background:#800000 !important; }
+  .p { width:78%; height:78%; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:clamp(14px,4vw,28px); border:3px solid #333; }
+  .D { background:#f2c230; color:#4a3500; } .P { background:#c0c6cf; color:#222; }
+  #barra { display:flex; gap:12px; align-items:center; margin-top:12px; font-size:20px; }
+  button { font-size:18px; padding:6px 14px; cursor:pointer; }
+  button:disabled { opacity:.35; cursor:default; }
+  #gana { background:#a00000; padding:4px 12px; border-radius:6px; }
+  small { margin-top:10px; opacity:.7; max-width:520px; text-align:center; }
+</style>
+</head>
+<body>
+<h1>Arimaa</h1>
+<div id="carga">Cargando Python…</div>
+<div id="tablero"></div>
+<div id="barra" hidden>
+  <button id="undo">◀</button><button id="redo">▶</button>
+  <span id="turno"></span><span id="pasos"></span>
+  <button id="pasar">Pasar</button><button id="nuevo">Nuevo</button>
+</div>
+<small>Modo 1 jugador: movés las piezas de ambos colores. Clic en una pieza, luego en una casilla vecina vacía para mover. Para empujar/arrastrar, seleccioná dos piezas vecinas y luego la casilla destino.</small>
+<script>
+const LETRA_COLOR = c => (c === c.toUpperCase() ? 'D' : 'P');
+let glue;
+
+async function main() {
+  const py = await loadPyodide();
+  for (const f of ['definiciones.py', 'arimaa.py', 'glue.py']) {
+    py.FS.writeFile(f, await (await fetch(f)).text());
+  }
+  glue = py.pyimport('glue');
+  document.getElementById('carga').remove();
+  document.getElementById('barra').hidden = false;
+  const acc = (id, fn) => document.getElementById(id).onclick = () => { fn(); dibujar(); };
+  acc('undo', () => glue.undo());
+  acc('redo', () => glue.redo());
+  acc('pasar', () => glue.pasar());
+  acc('nuevo', () => glue.nuevo());
+  dibujar();
+}
+
+function dibujar() {
+  const e = JSON.parse(glue.estado());
+  const tab = document.getElementById('tablero');
+  tab.innerHTML = '';
+  const en = (lista, f, c) => lista.findIndex(p => p[0] === f && p[1] === c);
+  e.tablero.forEach((linea, i) => {
+    const fila = 7 - i;
+    [...linea].forEach((ch, columna) => {
+      const d = document.createElement('div');
+      let cls = 'c ' + ((fila + columna) % 2 === 0 ? 'oscura' : 'clara');
+      if (en(e.trampas, fila, columna) >= 0) cls = 'c trampa';
+      const s = en(e.sel, fila, columna);
+      if (s === 0) cls = 'c sel1'; else if (s === 1) cls = 'c sel2';
+      d.className = cls;
+      if (ch !== '-') {
+        const p = document.createElement('div');
+        p.className = 'p ' + LETRA_COLOR(ch);
+        p.textContent = ch.toUpperCase();
+        d.appendChild(p);
+      }
+      d.onclick = () => { glue.click(fila, columna); dibujar(); };
+      tab.appendChild(d);
+    });
+  });
+  document.getElementById('undo').disabled = !e.undo;
+  document.getElementById('redo').disabled = !e.redo;
+  document.getElementById('pasar').disabled = !e.pasar;
+  document.getElementById('turno').textContent = 'Turno: ' + e.turno;
+  const pasos = document.getElementById('pasos');
+  if (e.ganador) { pasos.id = 'pasos'; pasos.innerHTML = '<span id="gana">GANA ' + e.ganador + '</span>'; }
+  else pasos.textContent = 'Pasos: ' + e.pasos;
+}
+main();
+</script>
+</body>
+</html>
